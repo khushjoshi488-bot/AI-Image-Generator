@@ -3,443 +3,226 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DIGI AI Studio - Image Generator</title>
-    
-    <!-- Tailwind CSS -->
+    <title>DIGI AI Studio Mobile</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
-    
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
 
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    animation: {
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    }
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
                 }
             }
         }
     </script>
-
     <style>
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1f2937; 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #4b5563; 
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #6366f1; 
-        }
-
-        /* Glassmorphism utilities */
+        /* Mobile Scrollbar hidden for cleaner look */
+        ::-webkit-scrollbar { display: none; }
         .glass-panel {
-            background: rgba(31, 41, 55, 0.7);
+            background: rgba(31, 41, 55, 0.85);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(75, 85, 99, 0.4);
         }
-        
-        .grid-bg {
-            background-image: radial-gradient(#4f46e5 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
     </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+<body class="bg-gray-950 text-white min-h-screen flex flex-col">
 
-    <!-- Background Elements -->
-    <div class="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div class="absolute top-0 left-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-[100px]"></div>
-        <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-600/10 rounded-full blur-[100px]"></div>
-    </div>
-
-    <!-- Header -->
-    <header class="w-full py-6 border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-50">
-        <div class="container mx-auto px-4 max-w-7xl flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <div class="bg-gradient-to-br from-indigo-500 to-cyan-500 p-2 rounded-lg">
-                    <i data-lucide="zap" class="w-6 h-6 text-white fill-current"></i>
-                </div>
-                <h1 class="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-                    DIGI AI <span class="font-light text-indigo-400">Studio</span>
-                </h1>
+    <header class="p-4 flex items-center justify-between sticky top-0 z-50 bg-gray-950/80 backdrop-blur-md border-b border-gray-800">
+        <div class="flex items-center gap-2">
+            <div class="bg-indigo-600 p-1.5 rounded-lg">
+                <i data-lucide="zap" class="w-5 h-5 text-white"></i>
             </div>
-            <nav class="hidden md:flex gap-6 text-sm font-medium text-gray-400">
-                <a href="#" class="hover:text-white transition-colors">Gallery</a>
-                <a href="#" class="hover:text-white transition-colors">Pricing</a>
-                <a href="#" class="hover:text-white transition-colors">About</a>
-            </nav>
+            <span class="font-bold text-lg tracking-tight">DIGI AI</span>
         </div>
+        <button id="settingsBtn" class="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors">
+            <i data-lucide="settings" class="w-5 h-5 text-gray-300"></i>
+        </button>
     </header>
 
-    <!-- Main Content -->
-    <main class="flex-grow container mx-auto px-4 py-8 lg:py-12 max-w-7xl">
+    <div id="settingsPanel" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-sm p-6 rounded-2xl shadow-2xl transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg">App Settings</h3>
+                <button id="closeSettings" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Gemini API Key</label>
+                    <input type="password" id="apiKeyInput" placeholder="Paste API Key here" 
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <p class="text-xs text-gray-500 mt-1">Key is saved to your device automatically.</p>
+                </div>
+                <button id="saveKeyBtn" class="w-full bg-green-600 hover:bg-green-500 py-3 rounded-lg font-semibold text-sm">Save & Close</button>
+            </div>
+        </div>
+    </div>
+
+    <main class="flex-grow container mx-auto px-4 py-6 max-w-md flex flex-col gap-6">
         
-        <!-- Intro -->
-        <div class="text-center mb-12">
-            <h2 class="text-4xl md:text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-400 to-indigo-400">
-                Turn Text into Art
-            </h2>
-            <p class="text-gray-400 text-lg max-w-2xl mx-auto">
-                Create stunning high-fidelity visuals in seconds using the latest generative AI models. 
-                Just describe it, and we'll visualize it.
-            </p>
+        <div class="space-y-3">
+            <label class="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i> Describe Image
+            </label>
+            <textarea 
+                id="promptInput"
+                placeholder="A cute robot eating pizza, neon lights..."
+                class="w-full h-32 p-4 bg-gray-900/80 border border-gray-700 rounded-2xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none text-base"
+            ></textarea>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            <!-- LEFT COLUMN: Input Controls -->
-            <div class="lg:col-span-4 space-y-6">
-                
-                <!-- Prompt Section -->
-                <div class="glass-panel rounded-2xl overflow-hidden shadow-2xl">
-                    <div class="h-1 w-full bg-gradient-to-r from-indigo-500 to-cyan-500"></div>
-                    <div class="p-6">
-                        <div class="flex items-center mb-4">
-                            <i data-lucide="sparkles" class="w-5 h-5 text-indigo-400 mr-2"></i>
-                            <label for="promptInput" class="text-lg font-bold text-gray-100">Describe your image</label>
-                        </div>
-                        <textarea 
-                            id="promptInput"
-                            placeholder="A futuristic city floating in the clouds, cyberpunk style, neon lights, 8k resolution..."
-                            class="w-full h-40 p-4 bg-gray-900/60 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-100 placeholder-gray-500 resize-none transition-all duration-200 leading-relaxed outline-none"
-                        ></textarea>
-                    </div>
-                </div>
-
-                <!-- Settings Section -->
-                <div class="glass-panel rounded-2xl p-6 shadow-xl">
-                    <h3 class="text-xs uppercase tracking-wider text-gray-400 font-bold mb-4">Configuration</h3>
-                    
-                    <div class="mb-6">
-                        <label class="block text-gray-300 text-sm font-medium mb-3">Aspect Ratio</label>
-                        <div class="flex bg-gray-800/50 p-1 rounded-xl" id="aspectRatioGroup">
-                            <button class="ratio-btn flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all bg-indigo-600 text-white shadow-lg" data-ratio="16:9">16:9</button>
-                            <button class="ratio-btn flex-1 py-2 px-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-gray-700 transition-all" data-ratio="9:16">9:16</button>
-                            <button class="ratio-btn flex-1 py-2 px-3 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-gray-700 transition-all" data-ratio="1:1">1:1</button>
-                        </div>
-                    </div>
-
-                    <!-- Visual-only upload -->
-                    <div>
-                        <label class="block text-gray-300 text-sm font-medium mb-2">
-                            Reference Image <span class="text-gray-500 font-normal text-xs ml-1">(Optional inspiration)</span>
-                        </label>
-                        <div class="relative group cursor-pointer" id="uploadZone">
-                            <input type="file" id="fileInput" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
-                            <div class="border-2 border-dashed border-gray-700 rounded-xl p-4 transition-colors duration-200 flex flex-col items-center justify-center group-hover:border-indigo-500/50 group-hover:bg-gray-800/50" id="uploadUI">
-                                <i data-lucide="upload-cloud" class="w-6 h-6 text-gray-500 mb-2 group-hover:text-indigo-400"></i>
-                                <span class="text-sm text-gray-400" id="fileName">Upload reference</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Generate Button -->
-                <button 
-                    id="generateBtn"
-                    class="w-full py-4 px-6 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center transition-all duration-300 transform bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white hover:scale-[1.02] shadow-indigo-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                >
-                    <span id="btnText" class="flex items-center">
-                        <i data-lucide="zap" class="w-5 h-5 mr-2 fill-current"></i>
-                        Generate Artwork
-                    </span>
-                    <span id="btnLoading" class="hidden flex items-center">
-                        <i data-lucide="loader-2" class="w-5 h-5 mr-2 animate-spin"></i>
-                        Dreaming...
-                    </span>
-                </button>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="bg-gray-900/50 p-3 rounded-xl border border-gray-800">
+                <span class="text-xs text-gray-400 block mb-2 uppercase font-bold">Ratio</span>
+                <select id="aspectRatio" class="w-full bg-gray-800 text-sm rounded-lg p-2 border-none outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="9:16">9:16 (Story)</option>
+                    <option value="1:1">1:1 (Square)</option>
+                </select>
             </div>
-
-            <!-- RIGHT COLUMN: Preview & Output -->
-            <div class="lg:col-span-8 h-full">
-                <div class="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-4 min-h-[500px] h-full flex flex-col">
-                    
-                    <!-- Toolbar -->
-                    <div class="flex justify-between items-center mb-4 px-2">
-                        <div class="flex items-center gap-2">
-                            <div id="statusDot" class="w-2 h-2 rounded-full bg-gray-500"></div>
-                            <span id="statusText" class="text-sm font-medium text-gray-400">Ready</span>
-                        </div>
-                        <button 
-                            id="downloadBtn" 
-                            class="hidden flex items-center gap-2 text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
-                        >
-                            <i data-lucide="download" class="w-4 h-4"></i>
-                            Download
-                        </button>
-                    </div>
-
-                    <!-- Canvas -->
-                    <div class="flex-1 bg-gray-900/50 rounded-xl border border-gray-700/50 relative overflow-hidden flex items-center justify-center grid-bg group">
-                        
-                        <!-- Empty State -->
-                        <div id="emptyState" class="flex flex-col items-center justify-center text-gray-500">
-                            <div class="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mb-4 shadow-inner">
-                                <i data-lucide="image" class="w-10 h-10 text-gray-600"></i>
-                            </div>
-                            <p class="text-lg font-medium text-gray-400">Canvas is Empty</p>
-                            <p class="text-sm text-gray-600 mt-2">Enter a prompt to begin</p>
-                        </div>
-
-                        <!-- Loading State -->
-                        <div id="loadingState" class="hidden absolute inset-0 flex flex-col items-center justify-center z-20 bg-gray-900/80 backdrop-blur-sm transition-opacity">
-                            <div class="relative">
-                                <div class="w-20 h-20 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <i data-lucide="zap" class="w-8 h-8 text-indigo-400 animate-pulse"></i>
-                                </div>
-                            </div>
-                            <p class="mt-6 text-indigo-400 font-medium tracking-wide animate-pulse">Creating your masterpiece...</p>
-                        </div>
-
-                        <!-- Error State -->
-                        <div id="errorState" class="hidden absolute inset-0 flex items-center justify-center p-8 z-20 bg-gray-900/90">
-                            <div class="text-center max-w-md">
-                                <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
-                                <h3 class="text-xl font-bold text-red-400 mb-2">Generation Failed</h3>
-                                <p id="errorMessage" class="text-gray-400 bg-red-900/20 p-4 rounded-lg border border-red-900/50 text-sm"></p>
-                                <button id="closeError" class="mt-4 text-sm text-gray-400 hover:text-white underline">Dismiss</button>
-                            </div>
-                        </div>
-
-                        <!-- Result Image -->
-                        <div id="resultContainer" class="hidden w-full h-full flex items-center justify-center p-2">
-                            <img id="generatedImage" src="" alt="Generated Art" class="max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl">
-                        </div>
-                    </div>
-                </div>
+            <div class="bg-gray-900/50 p-3 rounded-xl border border-gray-800 flex items-center justify-center">
+                 <span class="text-xs text-gray-500 text-center">Model: Imagen 3</span>
             </div>
         </div>
+
+        <button 
+            id="generateBtn"
+            class="w-full py-4 rounded-2xl font-bold text-lg shadow-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            <span id="btnText" class="flex items-center justify-center gap-2">
+                Generate Art <i data-lucide="arrow-right" class="w-5 h-5"></i>
+            </span>
+            <span id="btnLoading" class="hidden flex items-center justify-center gap-2">
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Creating...
+            </span>
+        </button>
+
+        <div id="resultArea" class="hidden bg-gray-900 rounded-2xl p-2 border border-gray-800 min-h-[300px] flex flex-col relative">
+             <img id="generatedImage" src="" class="w-full h-auto rounded-xl object-cover" alt="Generated Result">
+             <a id="downloadLink" href="#" class="mt-3 w-full bg-gray-800 hover:bg-gray-700 py-3 rounded-lg text-center text-sm font-medium flex items-center justify-center gap-2">
+                 <i data-lucide="download" class="w-4 h-4"></i> Save Image
+             </a>
+        </div>
+
+        <div id="errorMsg" class="hidden p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-red-200 text-sm text-center"></div>
+
     </main>
 
-    <!-- Footer -->
-    <footer class="border-t border-gray-800 py-8 mt-8 bg-gray-900">
-        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>&copy; 2024 DIGI AI Studio. Powered by Google Gemini & Imagen Models.</p>
-        </div>
-    </footer>
-
-    <!-- LOGIC -->
     <script>
-        // --- Configuration ---
-        const API_KEY = ""; // Environment will inject this automatically
-        
-        // --- State ---
-        let state = {
-            prompt: "",
-            aspectRatio: "16:9",
-            isLoading: false,
-            imageUrl: null,
-            error: null
-        };
-
-        // --- DOM Elements ---
-        const els = {
-            promptInput: document.getElementById('promptInput'),
-            ratioBtns: document.querySelectorAll('.ratio-btn'),
-            generateBtn: document.getElementById('generateBtn'),
-            btnText: document.getElementById('btnText'),
-            btnLoading: document.getElementById('btnLoading'),
-            
-            emptyState: document.getElementById('emptyState'),
-            loadingState: document.getElementById('loadingState'),
-            errorState: document.getElementById('errorState'),
-            errorMessage: document.getElementById('errorMessage'),
-            closeError: document.getElementById('closeError'),
-            
-            resultContainer: document.getElementById('resultContainer'),
-            generatedImage: document.getElementById('generatedImage'),
-            
-            statusDot: document.getElementById('statusDot'),
-            statusText: document.getElementById('statusText'),
-            downloadBtn: document.getElementById('downloadBtn'),
-            
-            fileInput: document.getElementById('fileInput'),
-            fileName: document.getElementById('fileName'),
-            uploadUI: document.getElementById('uploadUI')
-        };
-
-        // --- Initialization ---
         lucide.createIcons();
 
-        // --- Event Listeners ---
-
-        // 1. Aspect Ratio Selection
-        els.ratioBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                // Update state
-                state.aspectRatio = btn.dataset.ratio;
-                
-                // Update UI styles
-                els.ratioBtns.forEach(b => {
-                    b.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg');
-                    b.classList.add('text-gray-400');
-                });
-                btn.classList.remove('text-gray-400');
-                btn.classList.add('bg-indigo-600', 'text-white', 'shadow-lg');
-            });
-        });
-
-        // 2. Prompt Input
-        els.promptInput.addEventListener('input', (e) => {
-            state.prompt = e.target.value;
-            validateButton();
-        });
-
-        // 3. File Upload (Visual only)
-        els.fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                els.fileName.textContent = file.name;
-                els.fileName.classList.add('text-green-400');
-                els.uploadUI.classList.add('border-green-500/50', 'bg-green-500/10');
-            }
-        });
-
-        // 4. Generate Action
-        els.generateBtn.addEventListener('click', generateImage);
-
-        // 5. Download Action
-        els.downloadBtn.addEventListener('click', () => {
-            if (!state.imageUrl) return;
+        // DOM Elements
+        const els = {
+            settingsBtn: document.getElementById('settingsBtn'),
+            settingsPanel: document.getElementById('settingsPanel'),
+            closeSettings: document.getElementById('closeSettings'),
+            saveKeyBtn: document.getElementById('saveKeyBtn'),
+            apiKeyInput: document.getElementById('apiKeyInput'),
             
-            const link = document.createElement('a');
-            link.href = state.imageUrl;
-            link.download = `digi-ai-${Date.now()}.png`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        });
+            promptInput: document.getElementById('promptInput'),
+            aspectRatio: document.getElementById('aspectRatio'),
+            generateBtn: document.getElementById('generateBtn'),
+            
+            btnText: document.getElementById('btnText'),
+            btnLoading: document.getElementById('btnLoading'),
+            resultArea: document.getElementById('resultArea'),
+            generatedImage: document.getElementById('generatedImage'),
+            downloadLink: document.getElementById('downloadLink'),
+            errorMsg: document.getElementById('errorMsg')
+        };
 
-        // 6. Dismiss Error
-        els.closeError.addEventListener('click', () => {
-            els.errorState.classList.add('hidden');
-        });
-
-        // --- Functions ---
-
-        function validateButton() {
-            if (state.prompt.trim().length > 0 && !state.isLoading) {
-                els.generateBtn.disabled = false;
-                els.generateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            } else {
-                els.generateBtn.disabled = true;
-                els.generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            }
+        // 1. Load Saved API Key
+        const savedKey = localStorage.getItem('digi_ai_key');
+        if (savedKey) {
+            els.apiKeyInput.value = savedKey;
+        } else {
+            // Open settings automatically if no key
+            setTimeout(() => els.settingsPanel.classList.remove('hidden'), 500);
         }
 
-        async function generateImage() {
-            if (!state.prompt.trim()) return;
+        // 2. Settings Logic
+        const toggleSettings = () => els.settingsPanel.classList.toggle('hidden');
+        els.settingsBtn.addEventListener('click', toggleSettings);
+        els.closeSettings.addEventListener('click', toggleSettings);
+        
+        els.saveKeyBtn.addEventListener('click', () => {
+            const key = els.apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('digi_ai_key', key);
+                toggleSettings();
+            }
+        });
 
-            // Start Loading
-            state.isLoading = true;
-            updateUIState('loading');
+        // 3. Generate Logic
+        els.generateBtn.addEventListener('click', async () => {
+            const prompt = els.promptInput.value.trim();
+            const apiKey = localStorage.getItem('digi_ai_key');
+
+            // Validation
+            if (!apiKey) {
+                alert("Please enter your API Key in Settings first.");
+                toggleSettings();
+                return;
+            }
+            if (!prompt) {
+                alert("Please enter a description.");
+                return;
+            }
+
+            // UI Loading State
+            els.btnText.classList.add('hidden');
+            els.btnLoading.classList.remove('hidden');
+            els.generateBtn.disabled = true;
+            els.resultArea.classList.add('hidden');
+            els.errorMsg.classList.add('hidden');
 
             try {
-                // Prepare API request
-                const payload = {
-                    instances: [{ prompt: state.prompt }],
-                    parameters: {
-                        sampleCount: 1,
-                        aspectRatio: state.aspectRatio
-                    }
-                };
-
                 const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${API_KEY}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({
+                            instances: [{ prompt: prompt }],
+                            parameters: {
+                                sampleCount: 1,
+                                aspectRatio: els.aspectRatio.value
+                            }
+                        })
                     }
                 );
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error?.message || `API Error: ${response.status}`);
+                    const err = await response.json();
+                    throw new Error(err.error?.message || "Failed to generate image");
                 }
 
-                const result = await response.json();
-                const base64Image = result.predictions?.[0]?.bytesBase64Encoded;
+                const data = await response.json();
+                const base64 = data.predictions?.[0]?.bytesBase64Encoded;
 
-                if (!base64Image) {
-                    throw new Error("No image data received from API.");
+                if (base64) {
+                    const imgSrc = `data:image/png;base64,${base64}`;
+                    els.generatedImage.src = imgSrc;
+                    
+                    // Setup Download
+                    els.downloadLink.href = imgSrc;
+                    els.downloadLink.download = `digi-ai-${Date.now()}.png`;
+                    
+                    els.resultArea.classList.remove('hidden');
+                    els.resultArea.scrollIntoView({ behavior: 'smooth' });
                 }
-
-                // Success
-                state.imageUrl = `data:image/png;base64,${base64Image}`;
-                els.generatedImage.src = state.imageUrl;
-                updateUIState('success');
 
             } catch (error) {
-                console.error(error);
-                state.error = error.message;
-                els.errorMessage.textContent = error.message;
-                updateUIState('error');
+                els.errorMsg.textContent = error.message;
+                els.errorMsg.classList.remove('hidden');
             } finally {
-                state.isLoading = false;
-                validateButton();
+                els.btnText.classList.remove('hidden');
+                els.btnLoading.classList.add('hidden');
+                els.generateBtn.disabled = false;
             }
-        }
-
-        function updateUIState(mode) {
-            // Reset common elements
-            els.btnText.classList.remove('hidden');
-            els.btnLoading.classList.add('hidden');
-            els.generateBtn.disabled = false;
-            
-            // Hide all main canvas states first
-            els.emptyState.classList.add('hidden');
-            els.loadingState.classList.add('hidden');
-            els.errorState.classList.add('hidden');
-            els.resultContainer.classList.add('hidden');
-            
-            if (mode === 'loading') {
-                els.loadingState.classList.remove('hidden');
-                els.btnText.classList.add('hidden');
-                els.btnLoading.classList.remove('hidden');
-                els.generateBtn.disabled = true;
-                
-                els.statusDot.classList.remove('bg-gray-500', 'bg-green-400', 'bg-red-400');
-                els.statusDot.classList.add('bg-yellow-400', 'animate-pulse');
-                els.statusText.textContent = "Processing...";
-                els.downloadBtn.classList.add('hidden');
-            } 
-            else if (mode === 'success') {
-                els.resultContainer.classList.remove('hidden');
-                
-                els.statusDot.className = "w-2 h-2 rounded-full bg-green-400 mr-2"; // remove animations
-                els.statusText.textContent = "Complete";
-                els.downloadBtn.classList.remove('hidden');
-            } 
-            else if (mode === 'error') {
-                els.errorState.classList.remove('hidden');
-                
-                els.statusDot.className = "w-2 h-2 rounded-full bg-red-400 mr-2";
-                els.statusText.textContent = "Error";
-                els.downloadBtn.classList.add('hidden');
-            }
-        }
-        
-        // Initial state check
-        validateButton();
-
+        });
     </script>
 </body>
 </html>
