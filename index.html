@@ -1,303 +1,556 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { Download, Zap, Image, Upload } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai"; // Modality is not needed for generateImages
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DIGI AI Studio – Powered By Dreamit Getit Technology</title>
+    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font --><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbar styling for a cleaner look */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background-color: #a78bfa; border-radius: 10px; }
+        ::-webkit-scrollbar-track { background-color: #1f2937; }
 
-// Utility function to convert a File object to a Base64 string for the API
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        resolve(result.split(',')[1]); // Only get the base64 data part
-      } else {
-        reject(new Error("Failed to read file as string."));
-      }
-    };
-    reader.onerror = error => reject(error);
-    reader.readAsDataURL(file);
-  });
-};
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d0d12;
+            color: #e5e7eb;
+        }
 
-// Utility function to convert Base64 Data URL to a Blob
-const dataUrlToBlob = (dataurl: string): Blob => {
-  const parts = dataurl.split(',');
-  const mimeMatch = parts[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const bstr = atob(parts[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while(n--){
-      u8arr[n] = bstr.charCodeAt(n);
-  }
-  return new Blob([u8arr], {type:mime});
-};
+        /* Loading Spinner Animation */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #a78bfa;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
 
-// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-const API_KEY = process.env.API_KEY;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
 
-const App: React.FC = () => {
-  // State for image generation
-  const [prompt, setPrompt] = useState<string>(''); // Changed initial prompt to empty string
-  const [imageFile, setImageFile] = useState<File | null>(null); // Image file for reference (not directly used by API for generation)
-  const [generatedImageURL, setGeneratedImageURL] = useState<string | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9'); // '16:9', '9:16', or '1:1'
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Tailwind classes to control the container aspect ratio in the UI.
-  // Assumes Tailwind's aspect-ratio plugin is available or custom CSS provides these.
-  const aspectRatioClasses = useMemo(() => ({
-    '16:9': 'aspect-w-16 aspect-h-9',
-    '9:16': 'aspect-w-9 aspect-h-16',
-    '1:1': 'aspect-w-1 aspect-h-1',
-  }), []);
+        /* Aspect Ratio Selection Styles */
+        input[type="radio"]:checked + label {
+            background-color: #a78bfa;
+            color: #111827;
+            border-color: #a78bfa;
+        }
 
-  // Handler for file upload (for inspiration/reference only)
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        setError("Please upload a valid image file.");
-        setImageFile(null);
-        return;
-      }
-      // Implement a client-side size limit (e.g., 5MB)
-      if (file.size > 1024 * 1024 * 5) {
-        setError("Image is too large. Please upload an image smaller than 5MB.");
-        setImageFile(null);
-        return;
-      }
-      setImageFile(file);
-      setError(null);
-    } else {
-      setImageFile(null);
-    }
-  };
-  
-  // Main generation function using `imagen-4.0-generate-001` for guaranteed aspect ratio
-  const generateImage = useCallback(async () => {
-    if (!prompt.trim()) {
-      setError("Please enter a creative prompt.");
-      return;
-    }
+        /* Custom file input appearance */
+        #enhance-image-upload::file-selector-button,
+        #generate-image-upload::file-selector-button {
+            @apply bg-violet-600 text-white font-medium py-2 px-4 rounded-lg border-0 cursor-pointer hover:bg-violet-700 transition duration-150;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
 
-    setIsLoading(true);
-    setGeneratedImageURL(null);
-    setError(null);
-
-    // Instantiate GoogleGenAI inside the function to ensure the latest API_KEY is used.
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-    try {
-      const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001', // High-quality image generation with aspect ratio control
-        prompt: prompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/png', // Using PNG for output
-          aspectRatio: aspectRatio, // Directly use the selected aspect ratio
-        },
-      });
-
-      const generatedImage = response.generatedImages?.[0]?.image;
-
-      if (generatedImage?.imageBytes) {
-        setGeneratedImageURL(`data:${generatedImage.mimeType || 'image/png'};base64,${generatedImage.imageBytes}`);
-      } else {
-        throw new Error("Image generation failed: No image data received.");
-      }
-
-    } catch (e: any) {
-      console.error('Final error:', e);
-      setError(`Failed to generate image: ${e.message.slice(0, 150)}...`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [prompt, aspectRatio, API_KEY]); // aspectRatio is now a dependency for the API call.
-
-  // Handler for downloading the image
-  const downloadImage = useCallback(() => {
-    if (generatedImageURL) {
-      const blob = dataUrlToBlob(generatedImageURL);
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `digi-ai-image-${aspectRatio.replace(':', 'x')}-${Date.now()}.png`;
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url); // Free up memory
-    }
-  }, [generatedImageURL, aspectRatio]);
-
-  // UI Component: Upload Section
-  const UploadSection: React.FC = () => (
-    <div className="flex flex-col items-center p-4 border border-dashed border-indigo-500/50 rounded-xl bg-gray-800/50">
-      <label htmlFor="image-upload" className="w-full cursor-pointer">
-        <div className="flex flex-col items-center justify-center p-4">
-          <Upload className="w-6 h-6 text-indigo-400 mb-2" />
-          <p className="text-sm text-gray-300 font-medium text-center">
-            {imageFile ? (
-              <span className="text-green-400">Image loaded: {imageFile.name}</span>
-            ) : (
-              'Optional: Upload a reference image (for inspiration)'
-            )}
-          </p>
-          <p className="text-xs text-gray-500 mt-1 text-center">PNG, JPG (Max 5MB)</p>
-        </div>
-        <input
-          id="image-upload"
-          type="file"
-          accept="image/png, image/jpeg" // Restrict to png and jpeg for better compatibility
-          onChange={handleFileChange}
-          className="hidden"
-          disabled={isLoading}
-        />
-      </label>
-      {imageFile && (
-        <button
-          onClick={() => setImageFile(null)}
-          className="text-xs text-red-400 hover:text-red-300 mt-2 p-1 rounded-md transition duration-150 border border-red-500/50 hover:bg-red-500/20"
-        >
-          Remove Image
-        </button>
-      )}
-    </div>
-  );
-
-  // UI Component: Aspect Ratio Selector
-  const AspectRatioSelector: React.FC = () => (
-    <div className="flex justify-center bg-gray-700/50 p-1 rounded-xl shadow-inner">
-      {['16:9', '9:16', '1:1'].map((ratio) => (
-        <button
-          key={ratio}
-          onClick={() => setAspectRatio(ratio as '16:9' | '9:16' | '1:1')}
-          disabled={isLoading}
-          className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200
-            ${aspectRatio === ratio
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-              : 'text-gray-300 hover:bg-gray-600'
-            }`}
-        >
-          {ratio} ({ratio === '16:9' ? 'Landscape' : ratio === '9:16' ? 'Portrait' : 'Square'})
-        </button>
-      ))}
-    </div>
-  );
-
-  // UI Component: Image Display Area
-  const ImageDisplay: React.FC = () => (
-    <div className="p-4 bg-gray-800 rounded-xl shadow-2xl h-full flex flex-col items-center justify-center">
-      <div
-        className={`w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-lg overflow-hidden transition-all duration-300 ${aspectRatioClasses[aspectRatio]}`}
-      >
-        <div className="flex items-center justify-center w-full h-full bg-gray-900">
-          {isLoading && (
-            <div className="flex flex-col items-center justify-center p-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-400 mb-4"></div>
-              <p className="text-indigo-400 font-medium text-center">
-                Generating high-quality image...
-              </p>
-            </div>
-          )}
-          {error && (
-            <div className="p-4 text-center text-red-400 bg-red-900/50 rounded-lg m-4">
-              <p className="font-semibold">Error:</p>
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
-          {generatedImageURL && !isLoading && !error && (
-            <img
-              src={generatedImageURL}
-              alt="Generated AI Image"
-              className="w-full h-full object-cover" // object-cover ensures the image fills the aspect ratio container, given it's now a fixed ratio
-            />
-          )}
-          {!isLoading && !error && !generatedImageURL && (
-            <div className="text-center text-gray-500 p-8">
-              <Image className="w-10 h-10 mx-auto mb-2" />
-              <p>Your high-quality AI creation will appear here.</p>
-              <p className="text-xs mt-1"></p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8 font-sans">
-      <header className="text-center mb-8">
-        <h1 className="text-4xl font-extrabold text-indigo-400 mb-2">
-          DIGI AI Image Generator
+    <header class="text-center mb-10">
+        <h1 class="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-500">
+            DIGI AI Studio
         </h1>
-        <p className="text-gray-400">High-fidelity generation powered by Dream It, Get It technology.</p>
-        <p className="text-gray-500 text-sm mt-1"></p>
-      </header>
+        <p class="text-sm md:text-base text-gray-400 mt-2">Powered By Dreamit Getit Technology</p>
+    </header>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Control Panel (Left/Top) */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-            <h2 className="text-xl font-semibold mb-3 flex items-center">
-              <Zap className="w-5 h-5 mr-2 text-yellow-400" />
-              Image Prompt
-            </h2>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the image you want to create..."
-              rows={5}
-              className="w-full p-3 bg-gray-700/70 border border-gray-600 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-white resize-none"
-              disabled={isLoading}
-            />
-          </div>
+    <main class="max-w-4xl mx-auto bg-gray-800 rounded-xl shadow-2xl p-4 md:p-8">
 
-          <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 space-y-4">
-            <h2 className="text-xl font-semibold mb-4">Settings</h2>
-            <div className="space-y-2">
-              <label className="text-gray-300 font-medium block">Aspect Ratio</label>
-              <AspectRatioSelector />
+        <!-- Tab Navigation --><div class="flex border-b border-gray-700 mb-6">
+            <button id="tab-generate" onclick="switchTab('generate')"
+                    class="tab-button w-1/2 py-3 text-center text-lg font-semibold transition-colors duration-200 rounded-t-lg focus:outline-none"
+                    data-tab="generate">
+                Generate / Edit Image
+            </button>
+            <button id="tab-enhance" onclick="switchTab('enhance')"
+                    class="tab-button w-1/2 py-3 text-center text-lg font-semibold transition-colors duration-200 rounded-t-lg focus:outline-none"
+                    data-tab="enhance">
+                Enhance Image
+            </button>
+        </div>
+
+        <!-- Notification/Error Message Area --><div id="message-box" class="hidden p-3 mb-4 text-sm rounded-lg" role="alert"></div>
+
+        <!-- Tab Content Containers --><!-- 1. GENERATE / EDIT Tab Content --><div id="content-generate" class="tab-content space-y-6">
+            
+            <!-- Optional Image Upload for Editing --><div class="space-y-2">
+                <label for="generate-image-upload" class="block text-sm font-medium text-gray-300">
+                    Optional: Upload Image to Edit (or leave blank for pure generation)
+                </label>
+                <input type="file" id="generate-image-upload" accept="image/*" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-white placeholder-gray-400" onchange="previewGenerateImage(event)">
             </div>
-            <UploadSection />
-          </div>
+            
+            <!-- Generate Image Preview --><div id="generate-preview-container" class="flex justify-center items-center min-h-[100px] border border-dashed border-gray-600 rounded-xl p-4 hidden">
+                <img id="generate-original-image" class="max-w-full max-h-[150px] rounded-lg shadow" alt="Original Image Preview">
+            </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button
-              onClick={generateImage}
-              disabled={isLoading || !prompt.trim()}
-              className="flex-1 flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/50 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"
-            >
-              <Zap className="w-5 h-5 mr-2" />
-              {isLoading ? 'Generating...' : 'Generate Image'}
+            <div class="space-y-2">
+                <label for="generate-prompt" class="block text-sm font-medium text-gray-300">Text Prompt (Describe the image or the *edits* you want)</label>
+                <textarea id="generate-prompt" rows="3" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-white placeholder-gray-400 resize-none" placeholder="If editing, describe the changes (e.g., 'Change the sky to a sunset'). If generating, describe the whole scene..."></textarea>
+            </div>
+
+            <!-- Aspect Ratio Selection --><div class="space-y-2">
+                <p class="block text-sm font-medium text-gray-300">Aspect Ratio (Controls the shape and dimensions of the output)</p>
+                <div class="flex flex-wrap gap-2">
+                    <!-- Ratio definitions are mapped to width:height pixel dimensions --><div id="ratio-16-9" class="aspect-option" data-ratio="16:9">
+                        <input type="radio" id="ratio-16-9-radio" name="aspect-ratio" value="1024:576" checked class="hidden">
+                        <label for="ratio-16-9-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">16:9 (Widescreen)</label>
+                    </div>
+                    <div id="ratio-9-16" class="aspect-option" data-ratio="9:16">
+                        <input type="radio" id="ratio-9-16-radio" name="aspect-ratio" value="576:1024" class="hidden">
+                        <label for="ratio-9-16-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">9:16 (Vertical)</label>
+                    </div>
+                    <div id="ratio-1-1" class="aspect-option" data-ratio="1:1">
+                        <input type="radio" id="ratio-1-1-radio" name="aspect-ratio" value="1024:1024" class="hidden">
+                        <label for="ratio-1-1-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">1:1 (Square)</label>
+                    </div>
+                    <div id="ratio-4-5" class="aspect-option" data-ratio="4:5">
+                        <input type="radio" id="ratio-4-5-radio" name="aspect-ratio" value="832:1024" class="hidden">
+                        <label for="ratio-4-5-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">4:5 (Tall Post)</label>
+                    </div>
+                    <div id="ratio-3-2" class="aspect-option" data-ratio="3:2">
+                        <input type="radio" id="ratio-3-2-radio" name="aspect-ratio" value="1024:683" class="hidden">
+                        <label for="ratio-3-2-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">3:2 (Classic Wide)</label>
+                    </div>
+                </div>
+            </div>
+
+            <button id="generate-button" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-violet-500 focus:ring-opacity-50"
+                    onclick="generateImage()">
+                Generate / Edit Image
             </button>
-            <button
-              onClick={downloadImage}
-              disabled={!generatedImageURL || isLoading}
-              className="flex-1 flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/50 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"
-            >
-              <Download className="w-5 h-5 mr-2" />
-              Download
-            </button>
-          </div>
+
+            <!-- Image Output Area --><div id="generate-output-container" class="mt-8 pt-4 border-t border-gray-700 min-h-[300px] flex flex-col justify-center items-center">
+                <img id="generated-image" class="max-w-full max-h-[70vh] rounded-xl shadow-lg border-2 border-gray-700 hidden" alt="Generated AI Image">
+                <button id="download-generated-image" class="mt-4 px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-md transition duration-150 transform hover:scale-105 hidden" onclick="downloadImage('generated-image', 'generated_digi_ai_studio')">
+                    Download Image
+                </button>
+                <p id="generate-placeholder" class="text-gray-500 italic">Your generated or edited image will appear here.</p>
+                <div id="generate-loading" class="hidden flex flex-col items-center">
+                    <div class="spinner"></div>
+                    <p class="mt-3 text-violet-400">Processing image, please wait...</p>
+                </div>
+            </div>
         </div>
 
-        {/* Output Display (Right/Bottom) */}
-        <div className="lg:col-span-2 min-h-[50vh] flex items-center justify-center">
-          <ImageDisplay />
+        <!-- 2. ENHANCE Tab Content --><div id="content-enhance" class="tab-content hidden space-y-6">
+            <div class="space-y-2">
+                <label for="enhance-image-upload" class="block text-sm font-medium text-gray-300">Upload Image to Enhance</label>
+                <input type="file" id="enhance-image-upload" accept="image/*" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-white placeholder-gray-400" onchange="previewEnhanceImage(event)">
+            </div>
+
+            <div id="enhance-preview-container" class="flex justify-center items-center min-h-[200px] border border-dashed border-gray-600 rounded-xl p-4">
+                <img id="enhance-original-image" class="max-w-full max-h-[300px] rounded-lg shadow hidden" alt="Original Image Preview">
+                <p id="enhance-placeholder" class="text-gray-500 italic">Upload an image to see the preview.</p>
+            </div>
+
+            <button id="enhance-button" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-violet-500 focus:ring-opacity-50 disabled:opacity-50"
+                    onclick="enhanceImage()" disabled>
+                Convert to Ultra HD
+            </button>
+
+            <!-- Enhanced Image Output Area --><div id="enhance-output-container" class="mt-8 pt-4 border-t border-gray-700 min-h-[300px] flex flex-col justify-center items-center">
+                <img id="enhanced-image" class="max-w-full max-h-[70vh] rounded-xl shadow-lg border-2 border-gray-700 hidden" alt="Enhanced AI Image">
+                <button id="download-enhanced-image" class="mt-4 px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-md transition duration-150 transform hover:scale-105 hidden" onclick="downloadImage('enhanced-image', 'enhanced_digi_ai_studio')">
+                    Download Image
+                </button>
+                <p id="enhanced-placeholder" class="text-gray-500 italic">Your enhanced Ultra HD image will appear here.</p>
+                <div id="enhance-loading" class="hidden flex flex-col items-center">
+                    <div class="spinner"></div>
+                    <p class="mt-3 text-violet-400">Enhancing to Ultra HD, please wait...</p>
+                </div>
+            </div>
         </div>
-      </div>
 
-      <footer className="text-center mt-12 text-gray-500 text-sm">
-        <p>Powered by Gemini Image Generation API</p>
-      </footer>
-    </div>
-  );
-};
+    </main>
 
-export default App;
+    <script>
+        // --- Configuration ---
+        const apiKey = ""; // API key is provided at runtime.
+        const TEXT_TO_IMAGE_MODEL = "imagen-4.0-generate-001"; // For pure text-to-image
+        const IMAGE_EDITING_MODEL = "gemini-2.5-flash-image-preview"; // For image-to-image (editing and enhancing)
+        const ENHANCE_PROMPT = "Convert this image into an ultra-realistic, high-definition, sharp, and detailed version. Enhance the clarity, color, and texture, providing a true Ultra HD feel.";
+
+        // --- Utility Functions ---
+
+        /** Shows a message box for errors or notifications. */
+        function showMessage(text, isError = true) {
+            const box = document.getElementById('message-box');
+            box.textContent = text;
+            box.className = `p-3 mb-4 text-sm rounded-lg ${isError ? 'bg-red-900 text-red-300' : 'bg-green-900 text-green-300'}`;
+            box.style.display = 'block';
+            setTimeout(() => {
+                box.style.display = 'none';
+            }, 5000);
+        }
+
+        /** Converts a File object to a Base64 string for the API. */
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // Extract only the base64 part (after "data:image/jpeg;base64,")
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = (error) => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /** Handles exponential backoff for API calls. */
+        async function fetchWithBackoff(url, options, maxRetries = 5) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status !== 429 && response.ok) {
+                        return response;
+                    }
+                    if (response.status === 429 && i < maxRetries - 1) {
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                    throw new Error(`API call failed with status ${response.status}: ${response.statusText}`);
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        /** Downloads an image from an img element. */
+        function downloadImage(imgElementId, filenamePrefix) {
+            const imgElement = document.getElementById(imgElementId);
+            const imageUrl = imgElement.src;
+
+            if (imageUrl && imageUrl !== '#') {
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                link.download = `${filenamePrefix}_${Date.now()}.png`; // Unique filename
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                showMessage("No image to download.", true);
+            }
+        }
+
+        // --- Tab Switching Logic ---
+
+        /** Initializes the tab state based on the current active tab. */
+        function initTabs() {
+            // Apply initial styles for the active tab (Generate)
+            const generateTab = document.getElementById('tab-generate');
+            generateTab.classList.add('border-violet-500', 'text-violet-400');
+            generateTab.classList.remove('text-gray-400', 'hover:text-violet-400');
+        }
+
+        /** Switches the displayed content and updates tab styling. */
+        function switchTab(activeTabId) {
+            const tabs = ['generate', 'enhance'];
+            tabs.forEach(tabId => {
+                const button = document.getElementById(`tab-${tabId}`);
+                const content = document.getElementById(`content-${tabId}`);
+
+                if (tabId === activeTabId) {
+                    // Activate tab
+                    button.classList.add('border-violet-500', 'text-violet-400');
+                    button.classList.remove('text-gray-400', 'hover:text-violet-400');
+                    content.classList.remove('hidden');
+                } else {
+                    // Deactivate tab
+                    button.classList.remove('border-violet-500', 'text-violet-400');
+                    button.classList.add('text-gray-400', 'hover:text-violet-400');
+                    content.classList.add('hidden');
+                }
+            });
+            document.getElementById('message-box').style.display = 'none';
+        }
+
+        // --- GENERATE Tab Previews ---
+
+        /** Previews the uploaded image in the Generate tab. */
+        function previewGenerateImage(event) {
+            const file = event.target.files[0];
+            const originalImageEl = document.getElementById('generate-original-image');
+            const placeholderContainer = document.getElementById('generate-preview-container');
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    originalImageEl.src = e.target.result;
+                    originalImageEl.classList.remove('hidden');
+                    placeholderContainer.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                originalImageEl.classList.add('hidden');
+                placeholderContainer.classList.add('hidden');
+            }
+        }
+
+        // --- GENERATE Tab Logic (Text-to-Image / Image-to-Image Editing) ---
+
+        /** Handles the image generation or editing API call. */
+        async function generateImage() {
+            const prompt = document.getElementById('generate-prompt').value.trim();
+            const fileInput = document.getElementById('generate-image-upload');
+            const file = fileInput.files[0];
+            const aspectRatioValue = document.querySelector('input[name="aspect-ratio"]:checked').value;
+            const aspectRatioName = document.querySelector('input[name="aspect-ratio"]:checked').parentElement.getAttribute('data-ratio');
+            
+            if (!prompt) {
+                showMessage("Please enter a text prompt to generate or edit the image.");
+                return;
+            }
+
+            const button = document.getElementById('generate-button');
+            const loading = document.getElementById('generate-loading');
+            const imageEl = document.getElementById('generated-image');
+            const downloadButton = document.getElementById('download-generated-image');
+            const placeholderEl = document.getElementById('generate-placeholder');
+
+            // 1. Set Loading State
+            button.disabled = true;
+            button.textContent = file ? "Editing Image..." : "Generating Image...";
+            placeholderEl.classList.add('hidden');
+            imageEl.classList.add('hidden');
+            downloadButton.classList.add('hidden'); // Hide download button during processing
+            loading.classList.remove('hidden');
+            document.getElementById('message-box').style.display = 'none';
+
+            let apiUrl;
+            let payload;
+            let modelUsed;
+
+            try {
+                if (file) {
+                    // --- MODE 2: Image-to-Image Editing (using Gemini) ---
+                    modelUsed = IMAGE_EDITING_MODEL;
+                    const base64Image = await fileToBase64(file);
+                    
+                    // Extract exact pixel dimensions from the selected ratio value
+                    const [targetWidth, targetHeight] = aspectRatioValue.split(':');
+
+                    // Stronger prompt instruction to ensure the output size/ratio is respected
+                    const editingPrompt = `Edit this image as described: "${prompt}". The output image MUST strictly adhere to the dimensions ${targetWidth}x${targetHeight} pixels, maintaining the exact aspect ratio of ${aspectRatioName}.`;
+
+                    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelUsed}:generateContent?key=${apiKey}`;
+                    
+                    payload = {
+                        contents: [
+                            {
+                                parts: [
+                                    { text: editingPrompt },
+                                    {
+                                        inlineData: {
+                                            mimeType: file.type,
+                                            data: base64Image
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        generationConfig: {
+                            responseModalities: ['TEXT', 'IMAGE']
+                        },
+                    };
+
+                } else {
+                    // --- MODE 1: Text-to-Image Generation (using Imagen) ---
+                    modelUsed = TEXT_TO_IMAGE_MODEL;
+                    const [width, height] = aspectRatioValue.split(':');
+                    
+                    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelUsed}:predict?key=${apiKey}`;
+
+                    payload = {
+                        instances: {
+                            prompt: prompt,
+                            // Imagen is used for pure generation and guarantees the size matching
+                            aspect_ratio: `${width}:${height}`
+                        },
+                        parameters: { sampleCount: 1 }
+                    };
+                }
+                
+                // 2. Perform API Call
+                const response = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                
+                // 3. Extract Image Data (Extraction differs based on model)
+                let base64Data;
+                if (modelUsed === IMAGE_EDITING_MODEL) {
+                    // Gemini (Image-to-Image) extraction
+                    base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+                } else {
+                    // Imagen (Text-to-Image) extraction
+                    base64Data = result?.predictions?.[0]?.bytesBase64Encoded;
+                }
+
+                if (base64Data) {
+                    const imageUrl = `data:image/png;base64,${base64Data}`;
+                    imageEl.src = imageUrl;
+                    imageEl.classList.remove('hidden');
+                    downloadButton.classList.remove('hidden'); // Show download button
+                    showMessage(`Image processed successfully via ${modelUsed}!`, false);
+                } else {
+                    // Handle API error or empty prediction
+                    const errorMessage = result.error?.message || "Processing failed. Please check the prompt and image.";
+                    showMessage(`Error: ${errorMessage}`);
+                }
+
+            } catch (error) {
+                console.error("Image processing error:", error);
+                showMessage("An unexpected error occurred during image processing. Please check the console.");
+            } finally {
+                // 4. Reset State
+                button.disabled = false;
+                button.textContent = "Generate / Edit Image";
+                loading.classList.add('hidden');
+                if (imageEl.classList.contains('hidden')) {
+                    placeholderEl.classList.remove('hidden');
+                }
+            }
+        }
+
+        // --- ENHANCE Tab Logic (Image-to-Image) ---
+
+        /** Previews the uploaded image and enables the enhance button. */
+        function previewEnhanceImage(event) {
+            const file = event.target.files[0];
+            const originalImageEl = document.getElementById('enhance-original-image');
+            const placeholderEl = document.getElementById('enhance-placeholder');
+            const enhanceButton = document.getElementById('enhance-button');
+            const enhancedImageEl = document.getElementById('enhanced-image');
+            const enhancedPlaceholderEl = document.getElementById('enhanced-placeholder');
+            const downloadButton = document.getElementById('download-enhanced-image');
+
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    originalImageEl.src = e.target.result;
+                    originalImageEl.classList.remove('hidden');
+                    placeholderEl.classList.add('hidden');
+                    enhanceButton.disabled = false;
+                    // Clear previous enhanced result
+                    enhancedImageEl.classList.add('hidden');
+                    enhancedPlaceholderEl.classList.remove('hidden');
+                    downloadButton.classList.add('hidden'); // Hide download button
+                };
+                reader.readAsDataURL(file);
+            } else {
+                originalImageEl.classList.add('hidden');
+                placeholderEl.classList.remove('hidden');
+                enhanceButton.disabled = true;
+            }
+        }
+
+        /** Handles the image enhancement (Image-to-Image) API call. */
+        async function enhanceImage() {
+            const fileInput = document.getElementById('enhance-image-upload');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showMessage("Please upload an image first.");
+                return;
+            }
+
+            const button = document.getElementById('enhance-button');
+            const loading = document.getElementById('enhance-loading');
+            const enhancedImageEl = document.getElementById('enhanced-image');
+            const enhancedPlaceholderEl = document.getElementById('enhanced-placeholder');
+            const downloadButton = document.getElementById('download-enhanced-image');
+
+
+            // 1. Set Loading State
+            button.disabled = true;
+            button.textContent = "Enhancing...";
+            enhancedPlaceholderEl.classList.add('hidden');
+            enhancedImageEl.classList.add('hidden');
+            downloadButton.classList.add('hidden'); // Hide download button during processing
+            loading.classList.remove('hidden');
+            document.getElementById('message-box').style.display = 'none';
+
+            try {
+                const base64Image = await fileToBase64(file);
+                
+                // Prepare API payload for Gemini (generateContent endpoint for image-to-image)
+                const payload = {
+                    contents: [
+                        {
+                            parts: [
+                                { text: ENHANCE_PROMPT },
+                                {
+                                    inlineData: {
+                                        mimeType: file.type,
+                                        data: base64Image
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        responseModalities: ['TEXT', 'IMAGE']
+                        
+                    },
+                };
+                
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_EDITING_MODEL}:generateContent?key=${apiKey}`;
+
+                const response = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                // 2. Extract Image Data
+                const base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+
+                if (base64Data) {
+                    const imageUrl = `data:image/png;base64,${base64Data}`;
+                    enhancedImageEl.src = imageUrl;
+                    enhancedImageEl.classList.remove('hidden');
+                    downloadButton.classList.remove('hidden'); // Show download button
+                    showMessage("Image enhanced to Ultra HD successfully!", false);
+                } else {
+                    // Handle API error or empty prediction
+                    const errorMessage = result.error?.message || "Enhancement failed. Check the image format.";
+                    showMessage(`Error: ${errorMessage}`);
+                }
+
+            } catch (error) {
+                console.error("Image enhancement error:", error);
+                showMessage("An unexpected error occurred during image enhancement. Please check the console.");
+            } finally {
+                // 3. Reset State
+                button.disabled = false;
+                button.textContent = "Convert to Ultra HD";
+                loading.classList.add('hidden');
+                if (enhancedImageEl.classList.contains('hidden')) {
+                    enhancedPlaceholderEl.classList.remove('hidden');
+                }
+            }
+        }
+
+
+        // --- Initialization ---
+        window.onload = function() {
+            initTabs();
+            // Ensure the default tab is selected on load
+            switchTab('generate'); 
+        };
+    </script>
+</body>
+</html>
