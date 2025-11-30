@@ -1,556 +1,619 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DIGI AI Studio – Powered By Dreamit Getit Technology</title>
-    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inter Font --><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        /* Custom scrollbar styling for a cleaner look */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-thumb { background-color: #a78bfa; border-radius: 10px; }
-        ::-webkit-scrollbar-track { background-color: #1f2937; }
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Moon, 
+  Sun, 
+  Image as ImageIcon, 
+  Download, 
+  Sparkles, 
+  Upload, 
+  X, 
+  Menu, 
+  Wand2,
+  Share2,
+  Cpu,
+  MessageSquare,
+  Send
+} from 'lucide-react';
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0d0d12;
-            color: #e5e7eb;
+const apiKey = ""; // System provides key at runtime
+
+export default function App() {
+  // Global State
+  const [darkMode, setDarkMode] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const scrollRef = useRef(null);
+
+  // Image Generation State
+  const [prompt, setPrompt] = useState('');
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [activeTab, setActiveTab] = useState('generate'); // 'generate' or 'edit'
+
+  // Chat/Problem-Solving State
+  const [chatHistory, setChatHistory] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  // Scroll chat to the latest message
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [chatHistory, isChatOpen]);
+
+
+  // --- API Functions ---
+
+  // Image Generation API (Imagen 3)
+  const generateImage = async () => {
+    if (!prompt) return;
+    setIsLoading(true);
+    setError(null);
+    setGeneratedImage(null);
+
+    try {
+      // Prompt Engineering for Aspect Ratio
+      let ratioText = "";
+      switch (aspectRatio) {
+        case '16:9': ratioText = " --aspect-ratio 16:9 cinematic wide shot"; break;
+        case '9:16': ratioText = " --aspect-ratio 9:16 vertical portrait"; break;
+        case '4:3': ratioText = " --aspect-ratio 4:3 standard composition"; break;
+        case '3:4': ratioText = " --aspect-ratio 3:4 vertical standard"; break;
+        default: ratioText = " --aspect-ratio 1:1 square composition"; break;
+      }
+
+      const fullPrompt = `${prompt}, high quality, professional, 8k resolution, highly detailed. ${ratioText}`;
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            instances: [{ prompt: fullPrompt }],
+            parameters: { sampleCount: 1 }
+          }),
         }
+      );
 
-        /* Loading Spinner Animation */
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top: 4px solid #a78bfa;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
+      if (!response.ok) throw new Error(`Generation failed: ${response.statusText}`);
+
+      const result = await response.json();
+      
+      if (result.predictions && result.predictions[0] && result.predictions[0].bytesBase64Encoded) {
+        const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+        setGeneratedImage(imageUrl);
+      } else {
+        throw new Error("No image data received from API.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Failed to generate image. Please try a different prompt.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Image Editing API (Gemini 1.5 Flash)
+  const editImage = async () => {
+    if (!prompt || !uploadedImage) {
+      setError("Please provide both an image and a prompt for editing.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setGeneratedImage(null);
+
+    try {
+      // Extract base64 data from the uploaded data URL
+      const base64Data = uploadedImage.split(',')[1];
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: `Edit this image based on the following instruction: ${prompt}. Return ONLY the edited image.` },
+                { 
+                  inlineData: { 
+                    mimeType: "image/png", 
+                    data: base64Data 
+                  } 
+                }
+              ]
+            }],
+            generationConfig: {
+              responseModalities: ['IMAGE'] // Request strictly image output
+            }
+          })
         }
+      );
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+      if (!response.ok) throw new Error(`Editing failed: ${response.statusText}`);
+
+      const result = await response.json();
+      
+      // Check for inline data response (Gemini Flash Image Gen/Edit)
+      const outputData = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+      
+      if (outputData) {
+        setGeneratedImage(`data:image/png;base64,${outputData}`);
+      } else {
+        // Fallback or error if model refuses purely visual edit
+        throw new Error("The model could not generate a visual edit. Try describing the desired output more clearly.");
+      }
+
+    } catch (err) {
+      console.error(err);
+      setError("Failed to edit image. Ensure the prompt is clear.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Chat/Problem-Solving API (Gemini 2.5 Flash)
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = chatInput;
+    setChatInput('');
+    setChatHistory(prev => [...prev, { role: 'user', text: userMessage }]);
+    setIsChatLoading(true);
+
+    try {
+      // Combine existing history and new message for API
+      const chatHistoryForApi = [...chatHistory, { role: 'user', text: userMessage }];
+
+      // Transform history to API payload format
+      const contents = chatHistoryForApi.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }]
+      }));
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: contents,
+            // System instruction for the desired persona
+            systemInstruction: {
+                parts: [{ text: "You are 'Digi AI Assistant', a highly professional, mannerful, and helpful problem-solving AI. Your goal is to provide clear, effective, and supportive solutions to user problems. Maintain a warm, encouraging, and sophisticated tone, similar to a premium consultant or mentor." }]
+            }
+          })
         }
+      );
 
-        /* Aspect Ratio Selection Styles */
-        input[type="radio"]:checked + label {
-            background-color: #a78bfa;
-            color: #111827;
-            border-color: #a78bfa;
-        }
+      if (!response.ok) throw new Error(`Chat API failed: ${response.statusText}`);
 
-        /* Custom file input appearance */
-        #enhance-image-upload::file-selector-button,
-        #generate-image-upload::file-selector-button {
-            @apply bg-violet-600 text-white font-medium py-2 px-4 rounded-lg border-0 cursor-pointer hover:bg-violet-700 transition duration-150;
-        }
-    </style>
-</head>
-<body class="min-h-screen p-4 md:p-8">
+      const result = await response.json();
+      const modelResponseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
 
-    <header class="text-center mb-10">
-        <h1 class="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-500">
-            DIGI AI Studio
-        </h1>
-        <p class="text-sm md:text-base text-gray-400 mt-2">Powered By Dreamit Getit Technology</p>
-    </header>
+      setChatHistory(prev => [...prev, { role: 'model', text: modelResponseText }]);
 
-    <main class="max-w-4xl mx-auto bg-gray-800 rounded-xl shadow-2xl p-4 md:p-8">
+    } catch (err) {
+      console.error("Chat Error:", err);
+      setChatHistory(prev => [...prev, { role: 'model', text: "I apologize, but I encountered an error while processing your request. Please try again." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
-        <!-- Tab Navigation --><div class="flex border-b border-gray-700 mb-6">
-            <button id="tab-generate" onclick="switchTab('generate')"
-                    class="tab-button w-1/2 py-3 text-center text-lg font-semibold transition-colors duration-200 rounded-t-lg focus:outline-none"
-                    data-tab="generate">
-                Generate / Edit Image
+
+  // --- UI/Helper Functions ---
+
+  const handleAction = () => {
+    if (activeTab === 'edit' && uploadedImage) {
+      editImage();
+    } else {
+      generateImage();
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedImage(reader.result);
+        setActiveTab('edit'); // Auto switch to edit mode
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const downloadImage = () => {
+    if (generatedImage) {
+      const link = document.createElement('a');
+      link.href = generatedImage;
+      link.download = `digi-ai-studio-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const clearUpload = () => {
+    setUploadedImage(null);
+    setActiveTab('generate');
+  };
+
+  const toggleChat = () => {
+    setIsChatOpen(prev => !prev);
+    if (!isChatOpen && sidebarOpen) {
+        setSidebarOpen(false); // Close image settings when opening chat
+    }
+  };
+
+  // Theme Toggler
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  return (
+    <div className={`min-h-screen transition-colors duration-500 font-sans ${darkMode ? 'bg-[#0f1014] text-gray-100' : 'bg-white text-gray-900'}`}>
+      
+      {/* Navigation Bar */}
+      <nav className={`fixed top-0 w-full z-50 border-b backdrop-blur-md transition-colors duration-300 ${darkMode ? 'border-gray-800 bg-[#0f1014]/80' : 'border-gray-200 bg-white/80'}`}>
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.location.reload()}>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center text-white font-bold">
+              <Sparkles size={20} />
+            </div>
+            <span className="text-xl font-bold tracking-tight">Digi AI <span className="text-blue-600">Studio</span></span>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className={`p-2 rounded-full transition-all duration-300 ${darkMode ? 'hover:bg-gray-800 text-yellow-400' : 'hover:bg-gray-100 text-gray-600'}`}
+              title={darkMode ? "Switch to Light Mode" : "Switch to Drake Mode"}
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button id="tab-enhance" onclick="switchTab('enhance')"
-                    class="tab-button w-1/2 py-3 text-center text-lg font-semibold transition-colors duration-200 rounded-t-lg focus:outline-none"
-                    data-tab="enhance">
-                Enhance Image
+            <button 
+              className="md:hidden p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+              onClick={() => { setSidebarOpen(!sidebarOpen); if (!sidebarOpen && isChatOpen) setIsChatOpen(false); }}
+            >
+              <Menu size={20} />
             </button>
+          </div>
         </div>
+      </nav>
 
-        <!-- Notification/Error Message Area --><div id="message-box" class="hidden p-3 mb-4 text-sm rounded-lg" role="alert"></div>
-
-        <!-- Tab Content Containers --><!-- 1. GENERATE / EDIT Tab Content --><div id="content-generate" class="tab-content space-y-6">
+      {/* Main Layout */}
+      <div className="pt-16 flex h-screen overflow-hidden">
+        
+        {/* Sidebar (Image Settings & Tools) */}
+        <aside className={`
+          absolute md:relative z-40 w-80 h-full transform transition-transform duration-300 ease-in-out border-r
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          ${darkMode ? 'bg-[#0f1014] border-gray-800' : 'bg-white border-gray-200'}
+        `}>
+          <div className="p-6 flex flex-col h-full gap-8 overflow-y-auto">
             
-            <!-- Optional Image Upload for Editing --><div class="space-y-2">
-                <label for="generate-image-upload" class="block text-sm font-medium text-gray-300">
-                    Optional: Upload Image to Edit (or leave blank for pure generation)
+            {/* Branding Section */}
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Technology</h2>
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20">
+                <Cpu size={18} className="text-blue-600" />
+                <span className="text-sm font-medium">Dream It Get It Tech</span>
+              </div>
+            </div>
+
+            {/* Mode Switcher */}
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Mode</h2>
+              <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/50">
+                <button 
+                  onClick={() => setActiveTab('generate')}
+                  className={`flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'generate' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'}`}
+                >
+                  <Wand2 size={16} /> Generate
+                </button>
+                <button 
+                  onClick={() => setActiveTab('edit')}
+                  className={`flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'edit' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'}`}
+                >
+                  <ImageIcon size={16} /> Edit
+                </button>
+              </div>
+            </div>
+
+            {/* Aspect Ratio Selector */}
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Aspect Ratio</h2>
+              <div className="grid grid-cols-3 gap-2">
+                {['1:1', '16:9', '9:16', '4:3', '3:4'].map((ratio) => (
+                  <button
+                    key={ratio}
+                    onClick={() => setAspectRatio(ratio)}
+                    className={`py-2 px-3 text-xs font-medium rounded-lg border transition-all
+                      ${aspectRatio === ratio 
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' 
+                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-blue-300'}
+                    `}
+                  >
+                    {ratio}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Upload Area (Visible only in Edit Mode or as helper) */}
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Reference Image</h2>
+              {!uploadedImage ? (
+                <label className={`
+                  flex flex-col items-center justify-center w-full h-32 rounded-xl border-2 border-dashed cursor-pointer transition-all
+                  ${darkMode ? 'border-gray-700 hover:border-gray-500 hover:bg-gray-800' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}
+                `}>
+                  <Upload size={24} className="text-gray-400 mb-2" />
+                  <span className="text-xs text-gray-500">Upload to Edit</span>
+                  <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                 </label>
-                <input type="file" id="generate-image-upload" accept="image/*" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-white placeholder-gray-400" onchange="previewGenerateImage(event)">
+              ) : (
+                <div className="relative group rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <img src={uploadedImage} alt="Upload" className="w-full h-40 object-cover" />
+                  <button 
+                    onClick={clearUpload}
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <X size={14} />
+                  </button>
+                  <div className="absolute bottom-0 w-full bg-black/60 p-2">
+                    <p className="text-xs text-white font-medium text-center">Ready to Edit</p>
+                  </div>
+                </div>
+              )}
             </div>
+
+            <div className="mt-auto">
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800">
+                <h3 className="text-sm font-semibold mb-1">Pro Tip</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {activeTab === 'generate' 
+                    ? "Try adding words like 'cinematic lighting', 'hyperrealistic', or 'studio quality' for better results."
+                    : "Upload a sketch or photo and describe how you want to transform it."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Workspace */}
+        <main className="flex-1 flex flex-col relative overflow-hidden">
+          
+          {/* Canvas Area */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center justify-center">
             
-            <!-- Generate Image Preview --><div id="generate-preview-container" class="flex justify-center items-center min-h-[100px] border border-dashed border-gray-600 rounded-xl p-4 hidden">
-                <img id="generate-original-image" class="max-w-full max-h-[150px] rounded-lg shadow" alt="Original Image Preview">
-            </div>
-
-            <div class="space-y-2">
-                <label for="generate-prompt" class="block text-sm font-medium text-gray-300">Text Prompt (Describe the image or the *edits* you want)</label>
-                <textarea id="generate-prompt" rows="3" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-white placeholder-gray-400 resize-none" placeholder="If editing, describe the changes (e.g., 'Change the sky to a sunset'). If generating, describe the whole scene..."></textarea>
-            </div>
-
-            <!-- Aspect Ratio Selection --><div class="space-y-2">
-                <p class="block text-sm font-medium text-gray-300">Aspect Ratio (Controls the shape and dimensions of the output)</p>
-                <div class="flex flex-wrap gap-2">
-                    <!-- Ratio definitions are mapped to width:height pixel dimensions --><div id="ratio-16-9" class="aspect-option" data-ratio="16:9">
-                        <input type="radio" id="ratio-16-9-radio" name="aspect-ratio" value="1024:576" checked class="hidden">
-                        <label for="ratio-16-9-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">16:9 (Widescreen)</label>
-                    </div>
-                    <div id="ratio-9-16" class="aspect-option" data-ratio="9:16">
-                        <input type="radio" id="ratio-9-16-radio" name="aspect-ratio" value="576:1024" class="hidden">
-                        <label for="ratio-9-16-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">9:16 (Vertical)</label>
-                    </div>
-                    <div id="ratio-1-1" class="aspect-option" data-ratio="1:1">
-                        <input type="radio" id="ratio-1-1-radio" name="aspect-ratio" value="1024:1024" class="hidden">
-                        <label for="ratio-1-1-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">1:1 (Square)</label>
-                    </div>
-                    <div id="ratio-4-5" class="aspect-option" data-ratio="4:5">
-                        <input type="radio" id="ratio-4-5-radio" name="aspect-ratio" value="832:1024" class="hidden">
-                        <label for="ratio-4-5-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">4:5 (Tall Post)</label>
-                    </div>
-                    <div id="ratio-3-2" class="aspect-option" data-ratio="3:2">
-                        <input type="radio" id="ratio-3-2-radio" name="aspect-ratio" value="1024:683" class="hidden">
-                        <label for="ratio-3-2-radio" class="cursor-pointer text-gray-300 bg-gray-700 hover:bg-violet-600/50 border border-gray-600 px-4 py-2 rounded-lg transition-all text-sm">3:2 (Classic Wide)</label>
-                    </div>
+            {!generatedImage && !isLoading ? (
+              <div className="text-center max-w-lg animate-fade-in">
+                <div className={`w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                   <Sparkles className="text-blue-500" size={40} />
                 </div>
-            </div>
+                <h1 className="text-3xl md:text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
+                  Create with Digi AI
+                </h1>
+                <p className={`text-lg mb-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Powered by Dream It Get It Technology. <br/>
+                  Generate ultra-realistic images or edit your own with professional precision.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  {[
+                    "Cyberpunk city street at night",
+                    "Minimalist logo for a coffee shop",
+                    "Portrait of a futuristic astronaut"
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setPrompt(suggestion)}
+                      className={`px-4 py-2 text-sm rounded-full border transition-all
+                        ${darkMode 
+                          ? 'border-gray-700 hover:border-gray-500 hover:bg-gray-800 text-gray-300' 
+                          : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-600'}
+                      `}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="relative w-full max-w-4xl h-full flex flex-col items-center justify-center">
+                {isLoading ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="relative w-24 h-24">
+                      <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-gray-800"></div>
+                      <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"></div>
+                      <Sparkles className="absolute inset-0 m-auto text-blue-500 animate-pulse" size={24} />
+                    </div>
+                    <p className="text-sm font-medium text-gray-500 animate-pulse">
+                      {activeTab === 'edit' ? 'Refining your image...' : 'Dreaming up your masterpiece...'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative group w-full h-full flex items-center justify-center">
+                    <div className="relative max-h-full rounded-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700">
+                       <img 
+                        src={generatedImage} 
+                        alt="Generated content" 
+                        className="max-h-[70vh] w-auto object-contain rounded-lg"
+                      />
+                      <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button 
+                          onClick={downloadImage}
+                          className="p-2 bg-black/60 text-white backdrop-blur-md rounded-lg hover:bg-blue-600 transition-colors"
+                          title="Download"
+                        >
+                          <Download size={20} />
+                        </button>
+                        <button 
+                          className="p-2 bg-black/60 text-white backdrop-blur-md rounded-lg hover:bg-blue-600 transition-colors"
+                          title="Share"
+                        >
+                          <Share2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {error && (
+              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 text-sm flex items-center gap-2">
+                <X size={16} /> {error}
+              </div>
+            )}
+          </div>
 
-            <button id="generate-button" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-violet-500 focus:ring-opacity-50"
-                    onclick="generateImage()">
-                Generate / Edit Image
-            </button>
-
-            <!-- Image Output Area --><div id="generate-output-container" class="mt-8 pt-4 border-t border-gray-700 min-h-[300px] flex flex-col justify-center items-center">
-                <img id="generated-image" class="max-w-full max-h-[70vh] rounded-xl shadow-lg border-2 border-gray-700 hidden" alt="Generated AI Image">
-                <button id="download-generated-image" class="mt-4 px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-md transition duration-150 transform hover:scale-105 hidden" onclick="downloadImage('generated-image', 'generated_digi_ai_studio')">
-                    Download Image
+          {/* Input Area */}
+          <div className={`p-4 md:p-6 border-t ${darkMode ? 'border-gray-800 bg-[#0f1014]' : 'border-gray-200 bg-white'}`}>
+            <div className="max-w-4xl mx-auto relative">
+              <div className={`
+                flex items-center gap-2 p-2 rounded-2xl border-2 transition-all focus-within:ring-2 focus-within:ring-blue-500/50
+                ${darkMode ? 'bg-[#1a1b20] border-gray-700 focus-within:border-blue-500' : 'bg-gray-50 border-gray-200 focus-within:border-blue-500'}
+              `}>
+                <div className="pl-3">
+                  {activeTab === 'edit' ? <ImageIcon className="text-blue-500" size={24}/> : <Sparkles className="text-blue-500" size={24}/>}
+                </div>
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAction()}
+                  placeholder={
+                    activeTab === 'edit' 
+                      ? "Describe how you want to change the image (e.g., 'Make it sunset', 'Add a hat')..." 
+                      : "Describe what you want to see (e.g., 'A futuristic car in Tokyo')..."
+                  }
+                  className="flex-1 bg-transparent border-none outline-none px-2 py-3 text-base"
+                />
+                <button
+                  onClick={handleAction}
+                  disabled={isLoading || !prompt}
+                  className={`
+                    p-3 rounded-xl font-medium transition-all flex items-center gap-2
+                    ${isLoading || !prompt 
+                      ? 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30'}
+                  `}
+                >
+                  {isLoading ? 'Processing' : 'Generate'}
+                  {!isLoading && <Wand2 size={18} />}
                 </button>
-                <p id="generate-placeholder" class="text-gray-500 italic">Your generated or edited image will appear here.</p>
-                <div id="generate-loading" class="hidden flex flex-col items-center">
-                    <div class="spinner"></div>
-                    <p class="mt-3 text-violet-400">Processing image, please wait...</p>
-                </div>
+              </div>
+              <div className="mt-2 text-center">
+                <p className="text-[10px] text-gray-400 uppercase tracking-widest">
+                  Digi AI Studio • Dream It Get It
+                </p>
+              </div>
             </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Floating Chat Button */}
+      <button 
+        onClick={toggleChat}
+        className={`fixed bottom-6 right-6 z-50 p-4 rounded-full transition-all duration-300 shadow-xl 
+          ${isChatOpen ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}
+          text-white
+        `}
+        title={isChatOpen ? "Close Assistant" : "Open Digi AI Assistant"}
+      >
+        {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+      </button>
+
+      {/* Chat Assistant Panel */}
+      <div className={`fixed top-16 right-0 h-[calc(100vh-64px)] w-full md:w-[400px] z-50 transform transition-transform duration-300 ease-in-out shadow-2xl 
+        ${isChatOpen ? 'translate-x-0' : 'translate-x-full'}
+        ${darkMode ? 'bg-[#1a1b20] border-l border-gray-800 text-gray-100' : 'bg-white border-l border-gray-200 text-gray-900'}
+      `}>
+        <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <MessageSquare className="text-blue-500" size={20} /> Digi AI Assistant
+          </h3>
+          <button onClick={toggleChat} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X size={20} />
+          </button>
         </div>
 
-        <!-- 2. ENHANCE Tab Content --><div id="content-enhance" class="tab-content hidden space-y-6">
-            <div class="space-y-2">
-                <label for="enhance-image-upload" class="block text-sm font-medium text-gray-300">Upload Image to Enhance</label>
-                <input type="file" id="enhance-image-upload" accept="image/*" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-violet-500 focus:border-violet-500 text-white placeholder-gray-400" onchange="previewEnhanceImage(event)">
+        {/* Chat History */}
+        <div ref={scrollRef} className="p-4 space-y-4 overflow-y-auto h-[calc(100%-120px)]">
+          {chatHistory.length === 0 && (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <Sparkles size={32} className="mx-auto mb-2 text-blue-500" />
+              <p>How can I assist you today? I'm here to help solve your problems in a professional and helpful manner.</p>
             </div>
-
-            <div id="enhance-preview-container" class="flex justify-center items-center min-h-[200px] border border-dashed border-gray-600 rounded-xl p-4">
-                <img id="enhance-original-image" class="max-w-full max-h-[300px] rounded-lg shadow hidden" alt="Original Image Preview">
-                <p id="enhance-placeholder" class="text-gray-500 italic">Upload an image to see the preview.</p>
+          )}
+          {chatHistory.map((message, index) => (
+            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] p-3 rounded-xl shadow-md ${
+                message.role === 'user' 
+                  ? 'bg-blue-600 text-white rounded-br-none' 
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-tl-none'
+              }`}>
+                <p className="whitespace-pre-wrap text-sm">{message.text}</p>
+              </div>
             </div>
+          ))}
 
-            <button id="enhance-button" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-violet-500 focus:ring-opacity-50 disabled:opacity-50"
-                    onclick="enhanceImage()" disabled>
-                Convert to Ultra HD
-            </button>
-
-            <!-- Enhanced Image Output Area --><div id="enhance-output-container" class="mt-8 pt-4 border-t border-gray-700 min-h-[300px] flex flex-col justify-center items-center">
-                <img id="enhanced-image" class="max-w-full max-h-[70vh] rounded-xl shadow-lg border-2 border-gray-700 hidden" alt="Enhanced AI Image">
-                <button id="download-enhanced-image" class="mt-4 px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-md transition duration-150 transform hover:scale-105 hidden" onclick="downloadImage('enhanced-image', 'enhanced_digi_ai_studio')">
-                    Download Image
-                </button>
-                <p id="enhanced-placeholder" class="text-gray-500 italic">Your enhanced Ultra HD image will appear here.</p>
-                <div id="enhance-loading" class="hidden flex flex-col items-center">
-                    <div class="spinner"></div>
-                    <p class="mt-3 text-violet-400">Enhancing to Ultra HD, please wait...</p>
+          {isChatLoading && (
+            <div className="flex justify-start">
+              <div className={`max-w-[85%] p-3 rounded-xl shadow-md bg-gray-100 dark:bg-gray-800 rounded-tl-none`}>
+                <div className="animate-pulse flex space-x-2 items-center">
+                  <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+                  <div className="h-2 w-2 rounded-full bg-blue-500 opacity-75"></div>
+                  <div className="h-2 w-2 rounded-full bg-blue-500 opacity-50"></div>
                 </div>
+              </div>
             </div>
+          )}
         </div>
 
-    </main>
-
-    <script>
-        // --- Configuration ---
-        const apiKey = ""; // API key is provided at runtime.
-        const TEXT_TO_IMAGE_MODEL = "imagen-4.0-generate-001"; // For pure text-to-image
-        const IMAGE_EDITING_MODEL = "gemini-2.5-flash-image-preview"; // For image-to-image (editing and enhancing)
-        const ENHANCE_PROMPT = "Convert this image into an ultra-realistic, high-definition, sharp, and detailed version. Enhance the clarity, color, and texture, providing a true Ultra HD feel.";
-
-        // --- Utility Functions ---
-
-        /** Shows a message box for errors or notifications. */
-        function showMessage(text, isError = true) {
-            const box = document.getElementById('message-box');
-            box.textContent = text;
-            box.className = `p-3 mb-4 text-sm rounded-lg ${isError ? 'bg-red-900 text-red-300' : 'bg-green-900 text-green-300'}`;
-            box.style.display = 'block';
-            setTimeout(() => {
-                box.style.display = 'none';
-            }, 5000);
-        }
-
-        /** Converts a File object to a Base64 string for the API. */
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    // Extract only the base64 part (after "data:image/jpeg;base64,")
-                    const base64String = reader.result.split(',')[1];
-                    resolve(base64String);
-                };
-                reader.onerror = (error) => reject(error);
-                reader.readAsDataURL(file);
-            });
-        }
-
-        /** Handles exponential backoff for API calls. */
-        async function fetchWithBackoff(url, options, maxRetries = 5) {
-            for (let i = 0; i < maxRetries; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (response.status !== 429 && response.ok) {
-                        return response;
-                    }
-                    if (response.status === 429 && i < maxRetries - 1) {
-                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        continue;
-                    }
-                    throw new Error(`API call failed with status ${response.status}: ${response.statusText}`);
-                } catch (error) {
-                    if (i === maxRetries - 1) throw error;
-                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
-            }
-        }
-
-        /** Downloads an image from an img element. */
-        function downloadImage(imgElementId, filenamePrefix) {
-            const imgElement = document.getElementById(imgElementId);
-            const imageUrl = imgElement.src;
-
-            if (imageUrl && imageUrl !== '#') {
-                const link = document.createElement('a');
-                link.href = imageUrl;
-                link.download = `${filenamePrefix}_${Date.now()}.png`; // Unique filename
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            } else {
-                showMessage("No image to download.", true);
-            }
-        }
-
-        // --- Tab Switching Logic ---
-
-        /** Initializes the tab state based on the current active tab. */
-        function initTabs() {
-            // Apply initial styles for the active tab (Generate)
-            const generateTab = document.getElementById('tab-generate');
-            generateTab.classList.add('border-violet-500', 'text-violet-400');
-            generateTab.classList.remove('text-gray-400', 'hover:text-violet-400');
-        }
-
-        /** Switches the displayed content and updates tab styling. */
-        function switchTab(activeTabId) {
-            const tabs = ['generate', 'enhance'];
-            tabs.forEach(tabId => {
-                const button = document.getElementById(`tab-${tabId}`);
-                const content = document.getElementById(`content-${tabId}`);
-
-                if (tabId === activeTabId) {
-                    // Activate tab
-                    button.classList.add('border-violet-500', 'text-violet-400');
-                    button.classList.remove('text-gray-400', 'hover:text-violet-400');
-                    content.classList.remove('hidden');
-                } else {
-                    // Deactivate tab
-                    button.classList.remove('border-violet-500', 'text-violet-400');
-                    button.classList.add('text-gray-400', 'hover:text-violet-400');
-                    content.classList.add('hidden');
-                }
-            });
-            document.getElementById('message-box').style.display = 'none';
-        }
-
-        // --- GENERATE Tab Previews ---
-
-        /** Previews the uploaded image in the Generate tab. */
-        function previewGenerateImage(event) {
-            const file = event.target.files[0];
-            const originalImageEl = document.getElementById('generate-original-image');
-            const placeholderContainer = document.getElementById('generate-preview-container');
-
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    originalImageEl.src = e.target.result;
-                    originalImageEl.classList.remove('hidden');
-                    placeholderContainer.classList.remove('hidden');
-                };
-                reader.readAsDataURL(file);
-            } else {
-                originalImageEl.classList.add('hidden');
-                placeholderContainer.classList.add('hidden');
-            }
-        }
-
-        // --- GENERATE Tab Logic (Text-to-Image / Image-to-Image Editing) ---
-
-        /** Handles the image generation or editing API call. */
-        async function generateImage() {
-            const prompt = document.getElementById('generate-prompt').value.trim();
-            const fileInput = document.getElementById('generate-image-upload');
-            const file = fileInput.files[0];
-            const aspectRatioValue = document.querySelector('input[name="aspect-ratio"]:checked').value;
-            const aspectRatioName = document.querySelector('input[name="aspect-ratio"]:checked').parentElement.getAttribute('data-ratio');
-            
-            if (!prompt) {
-                showMessage("Please enter a text prompt to generate or edit the image.");
-                return;
-            }
-
-            const button = document.getElementById('generate-button');
-            const loading = document.getElementById('generate-loading');
-            const imageEl = document.getElementById('generated-image');
-            const downloadButton = document.getElementById('download-generated-image');
-            const placeholderEl = document.getElementById('generate-placeholder');
-
-            // 1. Set Loading State
-            button.disabled = true;
-            button.textContent = file ? "Editing Image..." : "Generating Image...";
-            placeholderEl.classList.add('hidden');
-            imageEl.classList.add('hidden');
-            downloadButton.classList.add('hidden'); // Hide download button during processing
-            loading.classList.remove('hidden');
-            document.getElementById('message-box').style.display = 'none';
-
-            let apiUrl;
-            let payload;
-            let modelUsed;
-
-            try {
-                if (file) {
-                    // --- MODE 2: Image-to-Image Editing (using Gemini) ---
-                    modelUsed = IMAGE_EDITING_MODEL;
-                    const base64Image = await fileToBase64(file);
-                    
-                    // Extract exact pixel dimensions from the selected ratio value
-                    const [targetWidth, targetHeight] = aspectRatioValue.split(':');
-
-                    // Stronger prompt instruction to ensure the output size/ratio is respected
-                    const editingPrompt = `Edit this image as described: "${prompt}". The output image MUST strictly adhere to the dimensions ${targetWidth}x${targetHeight} pixels, maintaining the exact aspect ratio of ${aspectRatioName}.`;
-
-                    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelUsed}:generateContent?key=${apiKey}`;
-                    
-                    payload = {
-                        contents: [
-                            {
-                                parts: [
-                                    { text: editingPrompt },
-                                    {
-                                        inlineData: {
-                                            mimeType: file.type,
-                                            data: base64Image
-                                        }
-                                    }
-                                ]
-                            }
-                        ],
-                        generationConfig: {
-                            responseModalities: ['TEXT', 'IMAGE']
-                        },
-                    };
-
-                } else {
-                    // --- MODE 1: Text-to-Image Generation (using Imagen) ---
-                    modelUsed = TEXT_TO_IMAGE_MODEL;
-                    const [width, height] = aspectRatioValue.split(':');
-                    
-                    apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelUsed}:predict?key=${apiKey}`;
-
-                    payload = {
-                        instances: {
-                            prompt: prompt,
-                            // Imagen is used for pure generation and guarantees the size matching
-                            aspect_ratio: `${width}:${height}`
-                        },
-                        parameters: { sampleCount: 1 }
-                    };
-                }
-                
-                // 2. Perform API Call
-                const response = await fetchWithBackoff(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                
-                // 3. Extract Image Data (Extraction differs based on model)
-                let base64Data;
-                if (modelUsed === IMAGE_EDITING_MODEL) {
-                    // Gemini (Image-to-Image) extraction
-                    base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-                } else {
-                    // Imagen (Text-to-Image) extraction
-                    base64Data = result?.predictions?.[0]?.bytesBase64Encoded;
-                }
-
-                if (base64Data) {
-                    const imageUrl = `data:image/png;base64,${base64Data}`;
-                    imageEl.src = imageUrl;
-                    imageEl.classList.remove('hidden');
-                    downloadButton.classList.remove('hidden'); // Show download button
-                    showMessage(`Image processed successfully via ${modelUsed}!`, false);
-                } else {
-                    // Handle API error or empty prediction
-                    const errorMessage = result.error?.message || "Processing failed. Please check the prompt and image.";
-                    showMessage(`Error: ${errorMessage}`);
-                }
-
-            } catch (error) {
-                console.error("Image processing error:", error);
-                showMessage("An unexpected error occurred during image processing. Please check the console.");
-            } finally {
-                // 4. Reset State
-                button.disabled = false;
-                button.textContent = "Generate / Edit Image";
-                loading.classList.add('hidden');
-                if (imageEl.classList.contains('hidden')) {
-                    placeholderEl.classList.remove('hidden');
-                }
-            }
-        }
-
-        // --- ENHANCE Tab Logic (Image-to-Image) ---
-
-        /** Previews the uploaded image and enables the enhance button. */
-        function previewEnhanceImage(event) {
-            const file = event.target.files[0];
-            const originalImageEl = document.getElementById('enhance-original-image');
-            const placeholderEl = document.getElementById('enhance-placeholder');
-            const enhanceButton = document.getElementById('enhance-button');
-            const enhancedImageEl = document.getElementById('enhanced-image');
-            const enhancedPlaceholderEl = document.getElementById('enhanced-placeholder');
-            const downloadButton = document.getElementById('download-enhanced-image');
-
-
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    originalImageEl.src = e.target.result;
-                    originalImageEl.classList.remove('hidden');
-                    placeholderEl.classList.add('hidden');
-                    enhanceButton.disabled = false;
-                    // Clear previous enhanced result
-                    enhancedImageEl.classList.add('hidden');
-                    enhancedPlaceholderEl.classList.remove('hidden');
-                    downloadButton.classList.add('hidden'); // Hide download button
-                };
-                reader.readAsDataURL(file);
-            } else {
-                originalImageEl.classList.add('hidden');
-                placeholderEl.classList.remove('hidden');
-                enhanceButton.disabled = true;
-            }
-        }
-
-        /** Handles the image enhancement (Image-to-Image) API call. */
-        async function enhanceImage() {
-            const fileInput = document.getElementById('enhance-image-upload');
-            const file = fileInput.files[0];
-
-            if (!file) {
-                showMessage("Please upload an image first.");
-                return;
-            }
-
-            const button = document.getElementById('enhance-button');
-            const loading = document.getElementById('enhance-loading');
-            const enhancedImageEl = document.getElementById('enhanced-image');
-            const enhancedPlaceholderEl = document.getElementById('enhanced-placeholder');
-            const downloadButton = document.getElementById('download-enhanced-image');
-
-
-            // 1. Set Loading State
-            button.disabled = true;
-            button.textContent = "Enhancing...";
-            enhancedPlaceholderEl.classList.add('hidden');
-            enhancedImageEl.classList.add('hidden');
-            downloadButton.classList.add('hidden'); // Hide download button during processing
-            loading.classList.remove('hidden');
-            document.getElementById('message-box').style.display = 'none';
-
-            try {
-                const base64Image = await fileToBase64(file);
-                
-                // Prepare API payload for Gemini (generateContent endpoint for image-to-image)
-                const payload = {
-                    contents: [
-                        {
-                            parts: [
-                                { text: ENHANCE_PROMPT },
-                                {
-                                    inlineData: {
-                                        mimeType: file.type,
-                                        data: base64Image
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        responseModalities: ['TEXT', 'IMAGE']
-                        
-                    },
-                };
-                
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_EDITING_MODEL}:generateContent?key=${apiKey}`;
-
-                const response = await fetchWithBackoff(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-
-                // 2. Extract Image Data
-                const base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-
-                if (base64Data) {
-                    const imageUrl = `data:image/png;base64,${base64Data}`;
-                    enhancedImageEl.src = imageUrl;
-                    enhancedImageEl.classList.remove('hidden');
-                    downloadButton.classList.remove('hidden'); // Show download button
-                    showMessage("Image enhanced to Ultra HD successfully!", false);
-                } else {
-                    // Handle API error or empty prediction
-                    const errorMessage = result.error?.message || "Enhancement failed. Check the image format.";
-                    showMessage(`Error: ${errorMessage}`);
-                }
-
-            } catch (error) {
-                console.error("Image enhancement error:", error);
-                showMessage("An unexpected error occurred during image enhancement. Please check the console.");
-            } finally {
-                // 3. Reset State
-                button.disabled = false;
-                button.textContent = "Convert to Ultra HD";
-                loading.classList.add('hidden');
-                if (enhancedImageEl.classList.contains('hidden')) {
-                    enhancedPlaceholderEl.classList.remove('hidden');
-                }
-            }
-        }
-
-
-        // --- Initialization ---
-        window.onload = function() {
-            initTabs();
-            // Ensure the default tab is selected on load
-            switchTab('generate'); 
-        };
-    </script>
-</body>
-</html>
+        {/* Chat Input */}
+        <form onSubmit={handleChatSubmit} className={`absolute bottom-0 w-full p-4 border-t ${darkMode ? 'border-gray-800 bg-[#1a1b20]' : 'border-gray-200 bg-white'}`}>
+          <div className={`flex items-center p-1 rounded-xl border transition-all focus-within:ring-2 focus-within:ring-blue-500/50 ${darkMode ? 'border-gray-700 bg-[#0f1014]' : 'border-gray-300 bg-white'}`}>
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Ask me anything..."
+              disabled={isChatLoading}
+              className="flex-1 bg-transparent border-none outline-none px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={isChatLoading || !chatInput.trim()}
+              className={`p-2 rounded-lg transition-all 
+                ${isChatLoading || !chatInput.trim() 
+                  ? 'bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/30'}
+              `}
+              title="Send Message"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
